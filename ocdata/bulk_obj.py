@@ -124,6 +124,7 @@ class Bulk():
         This can be later used to iterate through all surfaces,
         or select one at random, to make a Surface object.
         '''
+        
         if self.precomputed_structures:
             surfaces_info = self.read_from_precomputed_enumerations(self.index_of_bulk_atoms)
         else:
@@ -143,7 +144,7 @@ class Bulk():
             surfaces_info = pickle.load(f)
         return surfaces_info
 
-    def enumerate_surfaces(self, max_miller=MAX_MILLER):
+    def enumerate_surfaces(self, millers):
         '''
         Enumerate all the symmetrically distinct surfaces of a bulk structure. It
         will not enumerate surfaces with Miller indices above the `max_miller`
@@ -166,33 +167,42 @@ class Bulk():
         bulk_struct = self.standardize_bulk(self.bulk_atoms)
 
         all_slabs_info = []
-        for millers in get_symmetrically_distinct_miller_indices(bulk_struct, MAX_MILLER):
-            slab_gen = SlabGenerator(initial_structure=bulk_struct,
-                                     miller_index=millers,
-                                     min_slab_size=7.,
-                                     min_vacuum_size=20.,
-                                     lll_reduce=False,
-                                     center_slab=True,
-                                     primitive=True,
-                                     max_normal_search=1)
-            slabs = slab_gen.get_slabs(tol=0.3,
-                                       bonds=None,
-                                       max_broken_bonds=0,
-                                       symmetrize=False)
+        # for millers in get_symmetrically_distinct_miller_indices(bulk_struct, MAX_MILLER):
+        print("MILLER =>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", millers)
+        slab_gen = SlabGenerator(initial_structure=bulk_struct,
+                                 miller_index=millers,
+                                 min_slab_size=7.,
+                                 min_vacuum_size=20.,
+                                 lll_reduce=False,
+                                 center_slab=True,
+                                 primitive=True,
+                                 max_normal_search=1)
+        slabs = slab_gen.get_slabs(tol=0.3,
+                                   bonds=None,
+                                   max_broken_bonds=0,
+                                   symmetrize=False)
 
+        if len(slabs) == 0:
+            print("Vraiment pas de slabs...")
+        
             # Additional filtering for the 2D materials' slabs
-            if self.mpid in COVALENT_MATERIALS_MPIDS:
-                slabs = [slab for slab in slabs if self.is_2D_slab_reasonsable(slab) is True]
+        if self.mpid in COVALENT_MATERIALS_MPIDS:
+            rslabs = [slab for slab in slabs if self.is_2D_slab_reasonsable(slab) is True]
 
-            # If the bottoms of the slabs are different than the tops, then we want
-            # to consider them, too
-            if len(slabs) != 0:
-                flipped_slabs_info = [(self.flip_struct(slab), millers, slab.shift, False)
-                                      for slab in slabs if self.is_structure_invertible(slab) is False]
+            if len(rslabs) != 0:
+                slabs = rslabs
+            else:
+                print("Pas de slab raisonnable!")
 
-                # Concatenate all the results together
-                slabs_info = [(slab, millers, slab.shift, True) for slab in slabs]
-                all_slabs_info.extend(slabs_info + flipped_slabs_info)
+            
+        # If the bottoms of the slabs are different than the tops, then we want
+        # to consider them, too
+        flipped_slabs_info = [(self.flip_struct(slab), millers, slab.shift, False)
+                              for slab in slabs if self.is_structure_invertible(slab) is False]
+            
+        # Concatenate all the results together
+        slabs_info = [(slab, millers, slab.shift, True) for slab in slabs]
+        all_slabs_info.extend(slabs_info + flipped_slabs_info)
         return all_slabs_info
 
     def is_2D_slab_reasonsable(self, struct):

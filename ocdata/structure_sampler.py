@@ -45,23 +45,25 @@ class StructureSampler():
         selects the appropriate materials and writes to files
     '''
 
-    def __init__(self, args):
+    def __init__(self, args, catalyst):
         '''
         Set up args from argparse, random seed, and logging.
         '''
         self.args = args
 
+        self.catalyst = catalyst
+        
         self.logger = logging.getLogger()
         logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s',
             datefmt='%H:%M:%S')
         self.logger.setLevel(logging.INFO if self.args.verbose else logging.WARNING)
 
-        if self.args.enumerate_all_structures:
-            self.bulk_indices_list = [int(ind) for ind in args.bulk_indices.split(',')]
-            self.logger.info(f'Enumerating all surfaces/configs for adsorbate {self.args.adsorbate_index} and bulks {self.bulk_indices_list}')
-        else:
-            self.logger.info('Sampling one random structure')
-            np.random.seed(self.args.seed)
+        # if self.args.enumerate_all_structures:
+        #     self.bulk_indices_list = [int(ind) for ind in args.bulk_indices.split(',')]
+        #     self.logger.info(f'Enumerating all surfaces/configs for adsorbate {self.args.adsorbate_index} and bulks {self.bulk_indices_list}')
+        # else:
+        #     self.logger.info('Sampling one random structure')
+        #     np.random.seed(self.args.seed)
 
     def run(self):
         '''
@@ -72,7 +74,7 @@ class StructureSampler():
         if self.args.enumerate_all_structures:
             self.adsorbate = Adsorbate(self.args.adsorbate_db, self.args.adsorbate_index)
         self._load_bulks()
-        self._load_and_write_surfaces()
+        return self._load_and_write_surfaces()
 
         end = time.time()
         self.logger.info(f'Done! ({round(end - start, 2)}s)')
@@ -87,8 +89,8 @@ class StructureSampler():
             bulk_db_lookup = pickle.load(f)
 
         if self.args.enumerate_all_structures:
-            for ind in self.bulk_indices_list:
-                self.all_bulks.append(Bulk(bulk_db_lookup, self.args.precomputed_structures, ind))
+            #for ind in self.bulk_indices_list:
+            self.all_bulks.append(Bulk(bulk_db_lookup, self.args.precomputed_structures, self.catalyst.bulk_index))
         else:
             self.all_bulks.append(Bulk(bulk_db_lookup, self.args.precomputed_structures))
 
@@ -98,25 +100,46 @@ class StructureSampler():
         writes info for that surface and combined surface+adsorbate
         '''
         for bulk_ind, bulk in enumerate(self.all_bulks):
-            possible_surfaces = bulk.get_possible_surfaces()
-            if self.args.enumerate_all_structures:
-                if self.args.surface_index is not None:
-                    assert 0 <= self.args.surface_index < len(possible_surfaces), 'Invalid surface index provided'
-                    self.logger.info(f'Loading only surface {self.args.surface_index} for bulk {self.bulk_indices_list[bulk_ind]}')
-                    included_surface_indices = [self.args.surface_index]
-                else:
-                    self.logger.info(f'Enumerating all {len(possible_surfaces)} surfaces for bulk {self.bulk_indices_list[bulk_ind]}')
-                    included_surface_indices = range(len(possible_surfaces))
+            # possible_surfaces = bulk.get_possible_surfaces()
+            t = time.time()
+            possible_surfaces = bulk.enumerate_surfaces(self.catalyst.miller)
+            print(possible_surfaces)
+            print("Enumerate_surfaces time", time.time() - t)
 
-                for cur_surface_ind in included_surface_indices:
-                    surface_info = possible_surfaces[cur_surface_ind]
-                    surface = Surface(bulk, surface_info, cur_surface_ind, len(possible_surfaces))
-                    self._combine_and_write(surface, self.bulk_indices_list[bulk_ind], cur_surface_ind)
-            else:
-                surface_info_index = np.random.choice(len(possible_surfaces))
-                surface = Surface(bulk, possible_surfaces[surface_info_index], surface_info_index, len(possible_surfaces))
-                self.adsorbate = Adsorbate(self.args.adsorbate_db)
-                self._combine_and_write(surface)
+            t = time.time()
+            surface_info = possible_surfaces[self.catalyst.term%len(possible_surfaces)]
+            print("possible_surfaces time", time.time() - t)
+
+            t = time.time()
+            surface = Surface(bulk, surface_info, self.catalyst.term%len(possible_surfaces), len(possible_surfaces))
+            print(surface)
+            print("Surface time", time.time() - t)
+            
+            t = time.time()
+            out =  self._combine_and_write(surface, self.catalyst.bulk_index, self.catalyst.term%len(possible_surfaces))
+            print("combine_and_write time", time.time() - t)
+            return out
+
+            
+            
+            # if self.args.enumerate_all_structures:
+            #     if self.args.surface_index is not None:
+            #         assert 0 <= self.args.surface_index < len(possible_surfaces), 'Invalid surface index provided'
+            #         self.logger.info(f'Loading only surface {self.args.surface_index} for bulk {self.bulk_indices_list[bulk_ind]}')
+            #         included_surface_indices = [self.args.surface_index]
+            #     else:
+            #         self.logger.info(f'Enumerating all {len(possible_surfaces)} surfaces for bulk {self.bulk_indices_list[bulk_ind]}')
+            #         included_surface_indices = range(len(possible_surfaces))
+
+            #     for cur_surface_ind in included_surface_indices:
+            #         surface_info = possible_surfaces[cur_surface_ind]
+            #         surface = Surface(bulk, surface_info, cur_surface_ind, len(possible_surfaces))
+            #         self._combine_and_write(surface, self.bulk_indices_list[bulk_ind], cur_surface_ind)
+            # else:
+            #     surface_info_index = np.random.choice(len(possible_surfaces))
+            #     surface = Surface(bulk, possible_surfaces[surface_info_index], surface_info_index, len(possible_surfaces))
+            #     self.adsorbate = Adsorbate(self.args.adsorbate_db)
+            #     self._combine_and_write(surface)
 
 
     def _combine_and_write(self, surface, cur_bulk_index=None, cur_surface_index=None):
@@ -134,10 +157,15 @@ class StructureSampler():
         else:
             output_name_template = f'random{self.args.seed}'
 
+        t = time.time()
         self._write_surface(surface, output_name_template)
+        print("Write surface time", time.time() - t)
 
-        combined = Combined(self.adsorbate, surface, self.args.enumerate_all_structures)
-        self._write_adsorbed_surface(combined, output_name_template)
+        t = time.time()
+        combined = Combined(self.adsorbate, surface, self.args.enumerate_all_structures, self.catalyst.site)
+        print("Combined", time.time() - t)
+        
+        return self._write_adsorbed_surface(combined, output_name_template)
 
     def _write_surface(self, surface, output_name_template):
         '''
@@ -162,16 +190,25 @@ class StructureSampler():
             output_name_template: parent directory name for output files
         '''
         self.logger.info(f'Writing {combined.num_configs} adslab configs')
-        for config_ind in range(combined.num_configs):
-            if self.args.enumerate_all_structures:
-                adsorbed_bulk_dir = os.path.join(self.args.output_dir, output_name_template, f'adslab{config_ind}')
-            else:
-                adsorbed_bulk_dir = os.path.join(self.args.output_dir, output_name_template, 'adslab')
-            adsorbed_bulk_dict = combined.get_adsorbed_bulk_dict(config_ind)
-            write_vasp_input_files(adsorbed_bulk_dict['adsorbed_bulk_atomsobject'], adsorbed_bulk_dir)
-            self._write_metadata_pkl(adsorbed_bulk_dict, os.path.join(adsorbed_bulk_dir, 'metadata.pkl'))
-            if config_ind == 0:
-                self.logger.info(f"wrote adsorbed surface ({adsorbed_bulk_dict['adsorbed_bulk_samplingstr']}) to {adsorbed_bulk_dir}")
+        # for config_ind in range(combined.num_configs):
+        #     if self.args.enumerate_all_structures:
+        #         adsorbed_bulk_dir = os.path.join(self.args.output_dir, output_name_template, f'adslab{config_ind}')
+        #     else:
+        #         adsorbed_bulk_dir = os.path.join(self.args.output_dir, output_name_template, 'adslab')
+        #     adsorbed_bulk_dict = combined.get_adsorbed_bulk_dict(config_ind)
+        #     write_vasp_input_files(adsorbed_bulk_dict['adsorbed_bulk_atomsobject'], adsorbed_bulk_dir)
+        #     self._write_metadata_pkl(adsorbed_bulk_dict, os.path.join(adsorbed_bulk_dir, 'metadata.pkl'))
+        #     if config_ind == 0:
+        #         self.logger.info(f"wrote adsorbed surface ({adsorbed_bulk_dict['adsorbed_bulk_samplingstr']}) to {adsorbed_bulk_dir}")
+
+        adsorbed_bulk_dir = os.path.join(self.args.output_dir, output_name_template, f'adslab{0}')
+        adsorbed_bulk_dict = combined.get_adsorbed_bulk_dict(0)
+        write_vasp_input_files(adsorbed_bulk_dict['adsorbed_bulk_atomsobject'], adsorbed_bulk_dir)
+        self._write_metadata_pkl(adsorbed_bulk_dict, os.path.join(adsorbed_bulk_dir, 'metadata.pkl'))
+        # if config_ind == 0:
+        #     self.logger.info(f"wrote adsorbed surface ({adsorbed_bulk_dict['adsorbed_bulk_samplingstr']}) to {adsorbed_bulk_dir}")
+        return adsorbed_bulk_dict['adsorbed_bulk_atomsobject']
+            
 
     def _write_metadata_pkl(self, dict_to_write, path):
         '''

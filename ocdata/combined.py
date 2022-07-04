@@ -10,6 +10,7 @@ from pymatgen.analysis.local_env import VoronoiNN
 from .constants import COVALENT_RADIUS
 from .surfaces import constrain_surface
 
+import time
 
 class Combined():
     '''
@@ -39,7 +40,7 @@ class Combined():
         returns a dict of info for the adsorbate+surface of the specified config index
     '''
 
-    def __init__(self, adsorbate, surface, enumerate_all_configs):
+    def __init__(self, adsorbate, surface, enumerate_all_configs, catalyst_site):
         '''
         Adds adsorbate to surface, does the constraining, and aggregates all data necessary to write out.
         Can either pick a random configuration or store all possible ones.
@@ -53,6 +54,8 @@ class Combined():
         self.surface = surface
         self.enumerate_all_configs = enumerate_all_configs
 
+        self.site = catalyst_site
+        
         self.add_adsorbate_onto_surface(self.adsorbate.atoms, self.surface.surface_atoms, self.adsorbate.bond_indices)
 
         self.constrained_adsorbed_surfaces = []
@@ -101,20 +104,45 @@ class Combined():
         builder = catkit.gen.adsorption.Builder(surface_gratoms)
         with warnings.catch_warnings(): # suppress potential square root warnings
             warnings.simplefilter('ignore')
-            adsorbed_surfaces = builder.add_adsorbate(adsorbate_gratoms,
-                                                      bonds=bond_indices,
-                                                      index=-1)
 
-        # Filter out unreasonable structures.
-        # Then pick one from the reasonable configurations list as an output.
-        reasonable_adsorbed_surfaces = [surface for surface in adsorbed_surfaces
-                                        if self.is_config_reasonable(surface)]
+            t = time.time()
+            print("PROBLEMATIQUE:")
+            print(adsorbate_gratoms, bond_indices, self.site%len(builder.get_symmetric_sites()))
 
+            reasonable_adsorbed_surfaces = []
+            init_site = self.site
+            while len(reasonable_adsorbed_surfaces) == 0:
+                adsorbed_surfaces = [builder.add_adsorbate(adsorbate_gratoms,
+                                                           bonds=bond_indices,
+                                                           index=self.site%len(builder.get_symmetric_sites()))]
+
+                print("LENGTH 1", len(adsorbed_surfaces), adsorbed_surfaces)
+            
+                print("Size after:", len(adsorbed_surfaces))
+                print("add_adsorbates time:", time.time() - t)
+
+                # Filter out unreasonable structures.
+                # Then pick one from the reasonable configurations list as an output.
+                reasonable_adsorbed_surfaces = [surface for surface in adsorbed_surfaces
+                                                if self.is_config_reasonable(surface)]
+
+                print("LENGTH 2", len(reasonable_adsorbed_surfaces), reasonable_adsorbed_surfaces)
+                
+                if len(reasonable_adsorbed_surfaces) == 0:
+                    self.site += 1
+                    if self.site%len(builder.get_symmetric_sites()) == init_site%len(builder.get_symmetric_sites()):
+                        reasonable_adsorbed_surfaces = adsorbed_surfaces
+                        print("Nothing reasonable")
+                        break
+        
+        print("reasonable_adsorbed_surfaces time:", time.time() - t)
+        
         self.adsorbed_surface_atoms = []
         self.adsorbed_surface_sampling_strs = []
         if self.enumerate_all_configs:
             self.num_configs = len(reasonable_adsorbed_surfaces)
             for ind, reasonable_config in enumerate(reasonable_adsorbed_surfaces):
+                print("This?")
                 self.adsorbed_surface_atoms.append(reasonable_config)
                 self.adsorbed_surface_sampling_strs.append(str(ind) + '/' + str(len(reasonable_adsorbed_surfaces)))
         else:
@@ -123,6 +151,10 @@ class Combined():
             self.adsorbed_surface_atoms.append(reasonable_adsorbed_surfaces[reasonable_adsorbed_surface_index])
             self.adsorbed_surface_sampling_strs.append(str(reasonable_adsorbed_surface_index) + '/' + str(len(reasonable_adsorbed_surfaces)))
 
+        print("LENGTH", len(self.adsorbed_surface_atoms), self.adsorbed_surface_atoms)
+            
+            
+            
     def convert_adsorbate_atoms_to_gratoms(self, adsorbate, bond_indices):
         """
         Convert adsorbate atoms object into graphic atoms object,
