@@ -72,9 +72,21 @@ class StructureSampler():
         start = time.time()
 
         if self.args.enumerate_all_structures:
+            t_ads = time.time()
             self.adsorbate = Adsorbate(self.args.adsorbate_db, self.args.adsorbate_index)
+            t_ads = time.time() - t_ads
+            
+        t_bulks = time.time()
         self._load_bulks()
-        return self._load_and_write_surfaces()
+        t_bulks = time.time() - t_bulks
+        
+        t_load = time.time()
+        res, timing_load = self._load_and_write_surfaces()
+        t_load = time.time() - t_load
+
+        timing = [t_ads, t_bulks, t_load, timing_load]
+
+        return res, timing, os.path.join(self.args.output_dir, self.output_name_template)
 
         end = time.time()
         self.logger.info(f'Done! ({round(end - start, 2)}s)')
@@ -95,6 +107,9 @@ class StructureSampler():
             self.all_bulks.append(Bulk(bulk_db_lookup, self.args.precomputed_structures))
 
     def _load_and_write_surfaces(self):
+
+        timing_load = []
+
         '''
         Loops through all bulks and chooses one random or all possible surfaces;
         writes info for that surface and combined surface+adsorbate
@@ -102,23 +117,22 @@ class StructureSampler():
         for bulk_ind, bulk in enumerate(self.all_bulks):
             # possible_surfaces = bulk.get_possible_surfaces()
             t = time.time()
-            possible_surfaces = bulk.enumerate_surfaces(self.catalyst.miller)
+            possible_surfaces, timing_enum = bulk.enumerate_surfaces(self.catalyst.miller)
             print(possible_surfaces)
-            print("Enumerate_surfaces time", time.time() - t)
+            timing_load.append(time.time() - t)
+            timing_load.append(timing_enum)
 
-            t = time.time()
             surface_info = possible_surfaces[self.catalyst.term%len(possible_surfaces)]
-            print("possible_surfaces time", time.time() - t)
 
-            t = time.time()
             surface = Surface(bulk, surface_info, self.catalyst.term%len(possible_surfaces), len(possible_surfaces))
             print(surface)
-            print("Surface time", time.time() - t)
+            timing_load.append(surface.timing)
             
             t = time.time()
             out =  self._combine_and_write(surface, self.catalyst.bulk_index, self.catalyst.term%len(possible_surfaces))
-            print("combine_and_write time", time.time() - t)
-            return out
+            timing_load.append(time.time() - t)
+
+            return out, timing_load
 
             
             
@@ -153,19 +167,19 @@ class StructureSampler():
             cur_surface_index: current surface index if enumerating all
         '''
         if self.args.enumerate_all_structures:
-            output_name_template = f'{self.args.adsorbate_index}_{cur_bulk_index}_{cur_surface_index}'
+            self.output_name_template = f'{self.args.adsorbate_index}_{cur_bulk_index}_{"-".join([str(b) for b in self.catalyst.miller])}_{self.catalyst.term}_{self.catalyst.site}'
         else:
-            output_name_template = f'random{self.args.seed}'
+            self.output_name_template = f'random{self.args.seed}'
 
         t = time.time()
-        self._write_surface(surface, output_name_template)
+        self._write_surface(surface, self.output_name_template)
         print("Write surface time", time.time() - t)
 
         t = time.time()
         combined = Combined(self.adsorbate, surface, self.args.enumerate_all_structures, self.catalyst.site)
         print("Combined", time.time() - t)
         
-        return self._write_adsorbed_surface(combined, output_name_template)
+        return self._write_adsorbed_surface(combined, self.output_name_template)
 
     def _write_surface(self, surface, output_name_template):
         '''

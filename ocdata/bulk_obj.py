@@ -9,6 +9,7 @@ from pymatgen.io.ase import AseAtomsAdaptor
 from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from .constants import MAX_MILLER, COVALENT_MATERIALS_MPIDS
 
+import time
 
 class Bulk():
     '''
@@ -164,11 +165,16 @@ class Bulk():
                             objects for surfaces we have enumerated, the Miller
                             indices, floats for the shifts, and Booleans for "top".
         '''
+
+        timing_enum = []
+
         bulk_struct = self.standardize_bulk(self.bulk_atoms)
 
         all_slabs_info = []
         # for millers in get_symmetrically_distinct_miller_indices(bulk_struct, MAX_MILLER):
         print("MILLER =>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>", millers)
+
+        t = time.time()
         slab_gen = SlabGenerator(initial_structure=bulk_struct,
                                  miller_index=millers,
                                  min_slab_size=7.,
@@ -177,11 +183,17 @@ class Bulk():
                                  center_slab=True,
                                  primitive=True,
                                  max_normal_search=1)
+
+        timing_enum.append(time.time() - t)
+
+        t = time.time()
         slabs = slab_gen.get_slabs(tol=0.3,
                                    bonds=None,
                                    max_broken_bonds=0,
                                    symmetrize=False)
+        timing_enum.append(time.time() - t)
 
+        t = time.time()
         if len(slabs) == 0:
             print("Vraiment pas de slabs...")
         
@@ -203,7 +215,10 @@ class Bulk():
         # Concatenate all the results together
         slabs_info = [(slab, millers, slab.shift, True) for slab in slabs]
         all_slabs_info.extend(slabs_info + flipped_slabs_info)
-        return all_slabs_info
+
+        timing_enum.append(time.time() - t)
+
+        return all_slabs_info, timing_enum
 
     def is_2D_slab_reasonsable(self, struct):
         '''

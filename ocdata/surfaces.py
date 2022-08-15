@@ -1,8 +1,8 @@
-
 import math
 import numpy as np
 import os
 import pickle
+import time
 
 from ase import neighborlist
 from ase.constraints import FixAtoms
@@ -81,20 +81,37 @@ class Surface():
             surface_index: index of surface out of all possible ones for the bulk
             total_surfaces_possible: number of possible surfaces from this bulk
         '''
+
+        timing = []
+
+        t = time.time()
         self.bulk_object = bulk_object
         surface_struct, self.millers, self.shift, self.top = surface_info
         self.surface_sampling_str = str(surface_index) + "/" + str(total_surfaces_possible)
+        timing.append(time.time() - t)
 
+        t = time.time()
         unit_surface_atoms = AseAtomsAdaptor.get_atoms(surface_struct)
+        timing.append(time.time() - t)
+        
+        t = time.time()
         self.surface_atoms = self.tile_atoms(unit_surface_atoms)
+        timing.append(time.time() - t)
 
         # verify that the bulk and surface elements and stoichiometry match:
         assert (Composition(self.surface_atoms.get_chemical_formula()).reduced_formula ==
             Composition(bulk_object.bulk_atoms.get_chemical_formula()).reduced_formula), \
             'Mismatched bulk and surface'
 
+        t = time.time()
         self.tag_surface_atoms(self.bulk_object.bulk_atoms, self.surface_atoms)
+        timing.append(time.time() - t)
+
+        t = time.time()
         self.constrained_surface = constrain_surface(self.surface_atoms)
+        timing.append(time.time() - t)
+
+        self.timing = timing
 
     def tile_atoms(self, atoms):
         '''
