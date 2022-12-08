@@ -125,7 +125,6 @@ class StructureSampler():
             surface_info = possible_surfaces[self.catalyst.term%len(possible_surfaces)]
 
             surface = Surface(bulk, surface_info, self.catalyst.term%len(possible_surfaces), len(possible_surfaces))
-            print(surface)
             timing_load.append(surface.timing)
             
             t = time.time()

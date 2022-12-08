@@ -121,23 +121,29 @@ class catalystID():
                 #with suppress_out():
                 try:
                     job = StructureSampler(self.args, self)
+                    struc, timing, location = job.run()
                 except FileExistsError:
                     pass
-                struc, timing, location = job.run()
 
                 self.folder = location
 
                 self.timing = timing
 
                 print("Generation time", time.time() - t)
-                
-                with suppress_out():
-                    calc = OCPCalculator(config_yml=self.args.config_yml_path, checkpoint=self.args.checkpoint_path)
-                
-                struc.calc = calc
-                
-                self._value = -struc.get_potential_energy()
-                
+
+                print("Size:", len(struc))
+
+                if len(struc) < 150:
+                    with suppress_out():
+                        calc = OCPCalculator(config_yml=self.args.config_yml_path, checkpoint=self.args.checkpoint_path)
+                    
+                    struc.calc = calc
+                    
+                    self._value = -struc.get_potential_energy()
+                else:
+                    print("Too large:", location)
+                    self._value = np.nan
+
                 print("Output value:", self._value)
 
             else:
@@ -159,3 +165,11 @@ class catalystID():
     def __rep__(self):
 
         return self.__str__()
+
+    def __eq__(self, other):
+
+        return all([s == o for s,o in zip(self.miller, other.miller)]) and (self.term == other.term) and (self.site == other.site) and (self.bulk_index == other.bulk_index)
+
+    def __hash__(self):
+
+        return hash(tuple(self.miller)) ^ hash(self.term) ^ hash(self.site) ^ hash(self.bulk_index)

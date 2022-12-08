@@ -49,7 +49,7 @@ MAX_MILLER = 2
 # We will create surfaces that are at least MIN_XY Angstroms wide. GASpy uses
 # 4.5, but our larger adsorbates here can be up to 3.6 Angstroms long. So 4.5 +
 # 3.6 ~= 8 Angstroms
-MIN_XY = 8.
+MIN_XY = 4.5
 
 COVALENT_MATERIALS_MPIDS = ['mp-104', 'mp-79', 'mp-94', 'mp-11', 'mp-48', 'mp-23152', 'mp-1014111', 'mp-567409',
                             'mp-157', 'mp-10021', 'mp-140', 'mp-1094075', 'mp-571550', 'mp-1067758', 'mp-570875',

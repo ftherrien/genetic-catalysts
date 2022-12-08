@@ -28,7 +28,7 @@ test = False
 n_bulks = 100 #len(pickle.load(open(args.bulk_db, "rb")))
 
 n_iter = 50
-pop_size = 40
+pop_size = 20
 survive_size = 20
 n_children = 20
 n_newcomers = pop_size - survive_size - n_children  
@@ -75,6 +75,8 @@ print("Initial pop:", file=f)
 for cat in pop:
     print(cat, file=f)
 
+pop = set(pop)
+
 best = [0]
 worst = [0]
 avg = [0]
@@ -96,6 +98,16 @@ for i in range(n_iter):
     pool = Pool()
     pop = pool.map(evaluate, pop)
     print("Pool DONE", file=f, flush=True)
+
+    # Erase if too large
+    idx = []
+    for j, cat in enumerate(pop):
+        if np.isnan(cat.value):
+            pop[j].delete_folder()
+        else:
+            idx.append(j)
+
+    pop = np.array(pop)[idx]
 
     p = np.array([cat.value for cat in pop])
     
@@ -136,9 +148,9 @@ for i in range(n_iter):
         print(pop[j], p[j], p_abs[j], pop[j].folder, file=f)
     print(file=f)
 
-    idx = np.random.choice(range(pop_size), survive_size, False, p)
+    idx = np.random.choice(range(len(pop)), survive_size, False, p)
 
-    to_erase = list(set(range(pop_size)) - set(idx))
+    to_erase = list(set(range(len(pop))) - set(idx))
 
     # Erase excluded catalysts
     for j in to_erase:
@@ -179,7 +191,7 @@ for i in range(n_iter):
 
     # Newcomers
 
-    for i in range(n_newcomers):
+    for j in range(n_newcomers):
         miller = [0,0,0]
         while all(np.array(miller) == 0) or any(abs(np.array(miller)) > miller_max):
             if gaussian:
